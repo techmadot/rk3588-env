@@ -1,0 +1,20 @@
+#!/bin/sh
+SHELL=/bin/bash
+## スクリプト配置フォルダを指定する.
+HOME=/home/orangepi/myscripts
+MAILTO=""
+
+## 書式
+## minute hour day mon dow   command
+
+## 土曜 3:05 にシステムの再起動を試行.
+5 3 * * sat  root $HOME/reboot_sys.sh
+
+## 毎分状況のチェック
+*/1 * * * * root $HOME/watch_encode.sh
+*/1 * * * * root $HOME/watch_host.sh
+*/1 * * * * root $HOME/watch_epgstation.sh
+
+## エンコード投入
+15 3 * * * root node $HOME/enqueue_enc.js
+

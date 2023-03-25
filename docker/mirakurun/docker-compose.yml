@@ -1,0 +1,39 @@
+version: "3.7"
+services:
+  mirakurun:
+    container_name: mirakurun
+    build:
+      context: docker
+    cap_add:
+      - SYS_ADMIN
+      - SYS_NICE
+    ports:
+      - "9229:9229"
+      - "40772:40772"
+    environment:
+      TZ: Asia/Tokyo
+      # LOG_LEVEL: "3"
+      # DEBUG: "true"
+    devices:
+      - /dev/bus:/dev/bus
+# 使用するデバイスに応じて書き換える.      
+#      - /dev/dvb:/dev/dvb
+#      - /dev/pxm1urvideo0:/dev/pxm1urvideo0
+#      - /dev/px4video0:/dev/px4video0
+#      - /dev/px4video1:/dev/px4video1
+#      - /dev/px4video2:/dev/px4video2
+#      - /dev/px4video3:/dev/px4video3
+#      - /dev/isdb2056video0:/dev/isdb2056video0
+    volumes:
+      - type: bind
+        source: ./conf/
+        target: /app-config/
+      - type: bind
+        source: ./data/
+        target: /app-data/
+    logging:
+      driver: json-file
+      options:
+        max-file: "1"
+        max-size: 10m
+    restart: always
