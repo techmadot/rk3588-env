@@ -7,7 +7,6 @@ const fallback=1;
 const gstreamer = '/opt/gstreamer/bin/gst-launch-1.0';
 const gst_library_path = '/opt/gstreamer/lib/aarch64-linux-gnu';
 const ffprobe = '/usr/bin/ffprobe'
-const probe_script= '/home/orangepi/EPGStation/config/probe_ids.sh';
 const deinterlace_type = 1; //0:disable, 1:normal, 2:yadif
 const apply_resize= 0; // 0:disable, 1:enable
 const WIDTH=1280;
@@ -28,14 +27,15 @@ function executeProbe()
 {
   const execSync = require('child_process').execSync;
 
-  const result = execSync(`${probe_script} ${input}`);
+  const result = execSync(`${ffprobe} -of json -show_streams -show_programs ${input}`);
   const data = JSON.parse(String(result));
   if (data.program < 0 || data.video_sid < 0 || data.audio_sid < 0 ) {
     throw new Error('probe failed');
   }
-  //console.error('probe success');
   return data;
 }
+
+
 function checkVideoScale()
 {
   const execSync = require('child_process').execSync;
@@ -53,6 +53,35 @@ function checkVideoScale()
   }
   console.error('videoconvertscale is not available.');
   return 0;
+}
+
+function extractSID() {
+  video_sid = null;
+  audio_sid = null;
+  program_id = null;
+  const ret = executeProbe();
+  for(let program of ret.programs) {
+    const video_stream = program.streams.find( x => { return x.codec_type == "video"; });
+    const audio_stream = program.streams.find( x => { return x.codec_type == "audio"; });
+
+    if( video_stream && audio_stream ) {
+      program_id = program.program_id;
+      video_sid = parseInt(video_stream.id, 16);
+      audio_sid = parseInt(audio_stream.id, 16);
+
+      break;
+    }
+  }
+
+  const toHex = (x) => {
+    const val = '0000' + x.toString(16);
+    return val.slice(-4);
+  };
+  return {
+    program_id,
+    video_sid: toHex(video_sid),
+    audio_sid: toHex(audio_sid),
+  };
 }
 
 function executeFFMPEG(args)
@@ -123,17 +152,18 @@ function executeGStreamer(args)
 function buildArgsGStreamer(info)
 {
   const gst_args = [ '-e', 'filesrc', `location=${input}`, '!'];
+  console.log(info);
 
   if (disp_progress > 0) {
     Array.prototype.push.apply(gst_args, ['progressreport', 'update-freq=60', '!'] );
   }
   Array.prototype.push.apply(gst_args, [
-    'tsdemux', 'name=demuxer', `program-number=${info.program}`
+    'tsdemux', 'name=demuxer', `program-number=${info.program_id}`
   ]);
 
   // Video Pipeline
   Array.prototype.push.apply(gst_args, [
-    `demuxer.video_0_0${info.video_sid}`, '!',
+    `demuxer.video_0_${info.video_sid}`, '!',
     'video/mpeg', '!',
     'queue', 'max-size-time=0','max-size-buffers=0', '!',
     'mpegvideoparse', '!',
@@ -168,7 +198,7 @@ function buildArgsGStreamer(info)
 
   // Audio Pipeline
   Array.prototype.push.apply(gst_args, [
-    `demuxer.audio_0_0${info.audio_sid}`, '!',
+    `demuxer.audio_0_${info.audio_sid}`, '!',
     'audio/mpeg' ,'!',
     'queue', 'max-size-time=0', 'max-size-buffers=0', '!',
   ]);
@@ -179,7 +209,7 @@ function buildArgsGStreamer(info)
     'audioconvert', '!'
   ]);
   Array.prototype.push.apply(gst_args, [
-    'avenc_aac', 'ar=48000', 'bitrate=128000' ,'!',
+    'avenc_aac', 'ar=48000', 'bitrate=128000', 'ac=2', '!',
     'mux.'
   ]);
 
@@ -224,7 +254,7 @@ async function main() {
     videoscaling_available = checkVideoScale();
 
     let str = '';
-    gst_args = buildArgsGStreamer( executeProbe() );
+    gst_args = buildArgsGStreamer( extractSID() );
     for (let i of gst_args) {
         str += ` ${ i }`
     }
